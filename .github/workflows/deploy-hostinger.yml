@@ -1,11 +1,6 @@
-# Deploy automático para Hostinger via FTP
-# Configure no GitHub → Settings → Secrets and variables → Actions:
-#   HOSTINGER_FTP_SERVER   (ex: ftp.seudominio.com ou IP)
-#   HOSTINGER_FTP_USERNAME
-#   HOSTINGER_FTP_PASSWORD
-#   HOSTINGER_FTP_SERVER_DIR  (ex: /public_html/)  — opcional, default /public_html/
-#
-# NÃO sobrescreve .env no servidor (exclude).
+# Deploy automático para Hostinger via FTP/FTPS
+# Secrets: HOSTINGER_FTP_SERVER, HOSTINGER_FTP_USERNAME, HOSTINGER_FTP_PASSWORD, HOSTINGER_FTP_SERVER_DIR
+# NÃO sobrescreve .env no servidor.
 
 name: Deploy Hostinger
 
@@ -30,33 +25,47 @@ jobs:
 
       - name: Montar pasta de deploy (estrutura plana public_html)
         run: |
+          set -e
           mkdir -p release
           cp -a app release/app
-          # public assets na raiz
-          cp -a public/. release/
-          rm -f release/index.php release/.htaccess
-          # front controller Hostinger
+          # assets de public/ na raiz (sem index/htaccess de dev)
+          rsync -a --exclude 'index.php' --exclude '.htaccess' public/ release/
+          # front controller Hostinger (plano)
           cp deploy/hostinger/index.php release/index.php
           cp deploy/hostinger/public_html.htaccess release/.htaccess
           cp deploy/hostinger/upgrade-db.php release/upgrade-db.php
           cp deploy/hostinger/upgrade.sql release/upgrade.sql
+          cp deploy/hostinger/check-setup.php release/check-setup.php 2>/dev/null || true
           cp composer.json composer.lock spark preload.php release/ 2>/dev/null || true
-          # NÃO copiar .env
+          # writable skeleton (não apaga logs remotos se exclude)
+          mkdir -p release/writable/{cache,logs,session,uploads,debugbar}
+          for d in cache logs session uploads debugbar; do
+            echo '<!DOCTYPE html><title>403</title>' > "release/writable/$d/index.html"
+          done
+          echo '<!DOCTYPE html><title>403</title>' > release/writable/index.html
+          find release -type f | wc -l
+          ls -la release | head -30
 
-      - name: Deploy FTP (sem apagar .env)
+      - name: Deploy FTP/FTPS (preserva .env e vendor)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          server-dir: ${{ secrets.HOSTINGER_FTP_SERVER_DIR || '/public_html/' }}
+          server-dir: ${{ secrets.HOSTINGER_FTP_SERVER_DIR }}
           local-dir: ./release/
+          protocol: ftps
           dangerous-clean-slate: false
+          timeout: 600000
           exclude: |
             **/.git*
             **/.git*/**
             **/.env
+            **/.env.*
+            **/vendor/**
             **/writable/cache/**
             **/writable/logs/**
             **/writable/session/**
-            **/vendor/**
+            **/writable/debugbar/**
+            **/tests/**
+            **/deploy/pacotes/**
