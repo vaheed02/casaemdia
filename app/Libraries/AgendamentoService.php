@@ -214,6 +214,71 @@ class AgendamentoService
         return $this->agendamentos->comRelacoes($id);
     }
 
+    /**
+     * Admin libera para a fila de repasse (não depende de webhook).
+     * - Se o serviço está "aguardando confirmação", confirma + captura contábil.
+     * - Se já está pago mas o pagamento não entrou na fila, só captura/contabiliza.
+     */
+    public function adminLiberarRepasse(int $agendamentoId): array
+    {
+        $a = $this->agendamentos->find($agendamentoId);
+        if ($a === null) {
+            throw new RuntimeException('Agendamento não encontrado.');
+        }
+
+        // Atualiza status no MP (busca por external_reference se não houver payment_id)
+        try {
+            $this->gateway->sincronizarPagamento($agendamentoId);
+        } catch (RuntimeException $e) {
+            log_message('error', 'adminLiberarRepasse sync: ' . $e->getMessage());
+        }
+
+        $pag = $this->pagamentos->doAgendamento($agendamentoId);
+        if ($pag === null) {
+            throw new RuntimeException('Pagamento não encontrado.');
+        }
+
+        if ($a['status'] === 'aguardando_confirmacao') {
+            return $this->confirmar($agendamentoId, (int) $a['cliente_id'], null, 'Confirmado pelo admin (liberação de repasse).');
+        }
+
+        if (in_array($a['status'], ['pago'], true)) {
+            $cap = $this->gateway->capturar($agendamentoId);
+            if ($cap === null) {
+                throw new RuntimeException(
+                    'Pagamento ainda não está autorizado no Mercado Pago (status local: ' . $pag['status'] . '). Use Sync ou configure o webhook.'
+                );
+            }
+
+            return $this->agendamentos->comRelacoes($agendamentoId);
+        }
+
+        // Serviço concluído pelo prestador mas status travado? permite se pagamento ok
+        if (in_array($a['status'], ['em_andamento', 'aceito'], true)
+            && in_array($pag['status'], ['autorizado', 'capturado'], true)
+        ) {
+            // força conclusão + confirmação
+            if ($a['status'] === 'aceito') {
+                $this->agendamentos->update($agendamentoId, [
+                    'status'      => 'em_andamento',
+                    'iniciado_em' => $a['iniciado_em'] ?: date('Y-m-d H:i:s'),
+                ]);
+            }
+            $this->agendamentos->update($agendamentoId, [
+                'status'       => 'aguardando_confirmacao',
+                'concluido_em' => date('Y-m-d H:i:s'),
+            ]);
+
+            return $this->confirmar($agendamentoId, (int) $a['cliente_id'], null, 'Liberado pelo admin.');
+        }
+
+        throw new RuntimeException(
+            'Não é possível liberar agora. Status do serviço: ' . $a['status']
+            . ' · pagamento: ' . $pag['status']
+            . '. O cliente deve confirmar o serviço (ou o pagamento precisa estar autorizado).'
+        );
+    }
+
     public function valorSugerido(int $prestadorUsuarioId, string $tipo): float
     {
         $perfil = $this->perfis->findByUsuario($prestadorUsuarioId);

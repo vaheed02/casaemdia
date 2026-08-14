@@ -79,6 +79,25 @@ class PagamentoModel extends Model
             ->getResultArray();
     }
 
+    /**
+     * Serviços concluídos aguardando confirmação do cliente (ou travados)
+     * — admin pode liberar para a fila de repasse sem webhook.
+     */
+    public function aguardandoLiberacao(): array
+    {
+        return $this->db->table('pagamentos pg')
+            ->select('pg.*, a.data_servico, a.tipo_servico, a.status AS agendamento_status,
+                      c.nome AS cliente_nome, p.nome AS prestador_nome')
+            ->join('agendamentos a', 'a.id = pg.agendamento_id')
+            ->join('usuarios c', 'c.id = a.cliente_id')
+            ->join('usuarios p', 'p.id = a.prestador_id')
+            ->whereIn('a.status', ['aguardando_confirmacao', 'em_andamento', 'aceito'])
+            ->whereIn('pg.status', ['autorizado', 'capturado', 'pendente'])
+            ->orderBy('a.id', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
     public function ganhosPrestador(int $prestadorId): array
     {
         $row = $this->db->table('pagamentos pg')

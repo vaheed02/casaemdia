@@ -78,6 +78,34 @@ class MercadoPagoClient
         return $this->request('GET', '/v1/payments/' . rawurlencode($paymentId));
     }
 
+    /**
+     * Busca pagamentos pelo external_reference (ex.: agendamento-12).
+     * Útil quando o webhook não chegou e não há mp_payment_id local.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function searchPaymentsByExternalReference(string $externalReference): array
+    {
+        $qs = http_build_query([
+            'external_reference' => $externalReference,
+            'sort'               => 'date_created',
+            'criteria'           => 'desc',
+            'range'              => 'date_created',
+            'begin_date'         => 'NOW-6MONTHS',
+            'end_date'           => 'NOW',
+        ]);
+
+        $data = $this->request('GET', '/v1/payments/search?' . $qs);
+        $results = $data['results'] ?? [];
+
+        return is_array($results) ? $results : [];
+    }
+
+    public function getMerchantOrder(string $orderId): array
+    {
+        return $this->request('GET', '/merchant_orders/' . rawurlencode($orderId));
+    }
+
     public function refundPayment(string $paymentId, ?float $amount = null): array
     {
         $body = $amount !== null ? ['amount' => round($amount, 2)] : new \stdClass();

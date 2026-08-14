@@ -121,18 +121,37 @@ class MercadoPagoGateway implements PaymentGatewayInterface
         }
 
         $paymentId = $mpPaymentId ?: $pag['mp_payment_id'];
+        $pay       = null;
 
-        // Sem payment id: tenta achar por external_reference via search (se disponível)
-        if (! $paymentId && ! empty($pag['mp_preference_id'])) {
-            // Mantém pendente — retorno do checkout ou webhook preencherá o id
-            return $pag;
+        // Sem payment id: busca no MP por external_reference (não depende de webhook)
+        if (! $paymentId) {
+            $ext = 'agendamento-' . $agendamentoId;
+            try {
+                $results = $this->client->searchPaymentsByExternalReference($ext);
+                // Prefere approved; senão o mais recente
+                $approved = null;
+                foreach ($results as $r) {
+                    if (($r['status'] ?? '') === 'approved') {
+                        $approved = $r;
+                        break;
+                    }
+                }
+                $pay = $approved ?: ($results[0] ?? null);
+                if (is_array($pay) && ! empty($pay['id'])) {
+                    $paymentId = (string) $pay['id'];
+                }
+            } catch (RuntimeException $e) {
+                log_message('error', 'MP search external_reference: ' . $e->getMessage());
+            }
         }
 
         if (! $paymentId) {
             return $pag;
         }
 
-        $pay      = $this->client->getPayment((string) $paymentId);
+        if ($pay === null) {
+            $pay = $this->client->getPayment((string) $paymentId);
+        }
         $statusMp = (string) ($pay['status'] ?? '');
 
         $map = [

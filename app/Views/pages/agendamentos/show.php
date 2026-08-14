@@ -167,7 +167,12 @@ $idx  = array_search($st, $flow, true);
         </form>
       <?php endif; ?>
 
-      <?php if ($isCliente && $st === 'aguardando_confirmacao'): ?>
+      <?php if ($st === 'aguardando_confirmacao'): ?>
+        <?php if ($isCliente): ?>
+        <div class="alert alert-success" style="width:100%;margin-bottom:10px">
+          O prestador marcou o serviço como concluído. Confirme abaixo para liberar a comissão da plataforma e colocar o líquido do prestador na fila de repasse do admin.
+          <strong>Isso não depende de webhook</strong> — a confirmação grava tudo no sistema.
+        </div>
         <form method="post" action="<?= base_url('agendamentos/' . $ag['id'] . '/confirmar') ?>" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;width:100%">
           <?= csrf_field() ?>
           <div class="field" style="margin:0">
@@ -183,8 +188,16 @@ $idx  = array_search($st, $flow, true);
             <label>Comentário</label>
             <input class="input" type="text" name="comentario" placeholder="Como foi o serviço?">
           </div>
-          <button class="btn btn-green" type="submit"><svg class="ic"><use href="#i-money"/></svg>Confirmar serviço (reter comissão)</button>
+          <button class="btn btn-green" type="submit"><svg class="ic"><use href="#i-money"/></svg>Confirmar serviço e liberar repasse</button>
         </form>
+        <?php elseif ($isPrestador): ?>
+          <span class="hint">Serviço concluído. Aguardando o <strong>cliente confirmar</strong> (ou o admin liberar o repasse).</span>
+        <?php elseif ($usuarioRole === 'admin' && $pagamento): ?>
+          <form method="post" action="<?= base_url('admin/pagamentos/' . $pagamento['id'] . '/liberar') ?>" onsubmit="return confirm('Confirmar pelo cliente e liberar repasse?');">
+            <?= csrf_field() ?>
+            <button class="btn btn-green" type="submit">Admin: liberar repasse agora</button>
+          </form>
+        <?php endif; ?>
       <?php endif; ?>
 
       <?php if (in_array($st, ['pendente', 'aceito'], true) && ($isCliente || $isPrestador)): ?>

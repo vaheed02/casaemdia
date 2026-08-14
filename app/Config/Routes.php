@@ -64,4 +64,5 @@ $routes->group('', ['filter' => 'auth'], static function ($routes) {
     $routes->post('admin/comissoes', 'AdminController::salvarComissao');
     $routes->post('admin/pagamentos/(:num)/repassar', 'AdminController::repassar/$1');
     $routes->post('admin/pagamentos/(:num)/sincronizar', 'AdminController::sincronizar/$1');
+    $routes->post('admin/pagamentos/(:num)/liberar', 'AdminController::liberar/$1');
 });

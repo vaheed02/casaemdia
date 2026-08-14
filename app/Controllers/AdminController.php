@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\AgendamentoService;
 use App\Libraries\Payments\PaymentGatewayFactory;
 use App\Models\ConfiguracaoModel;
 use App\Models\PagamentoModel;
@@ -33,6 +34,7 @@ class AdminController extends BaseController
             'lista'      => model(PagamentoModel::class)->listarComDetalhes(),
             'totais'     => model(PagamentoModel::class)->totaisPlataforma(),
             'aRepassar'  => model(PagamentoModel::class)->aRepassar(),
+            'aLiberar'   => model(PagamentoModel::class)->aguardandoLiberacao(),
             'mpDriver'   => $mp->driver,
             'mpOk'       => $mp->isConfigured(),
         ]);
@@ -102,12 +104,40 @@ class AdminController extends BaseController
         }
 
         try {
-            PaymentGatewayFactory::make()->sincronizarPagamento(
+            $updated = PaymentGatewayFactory::make()->sincronizarPagamento(
                 (int) $pag['agendamento_id'],
                 $pag['mp_payment_id'] ?: null
             );
+            $st = $updated['status'] ?? '?';
+            $mp = $updated['mp_status'] ?? '';
 
-            return redirect()->back()->with('success', 'Status sincronizado com o Mercado Pago.');
+            return redirect()->back()->with(
+                'success',
+                'Sincronizado com o Mercado Pago (sem precisar de webhook). Status: ' . $st
+                . ($mp !== '' ? ' · MP ' . $mp : '')
+                . (! empty($updated['mp_payment_id']) ? ' · pay ' . $updated['mp_payment_id'] : '')
+            );
+        } catch (RuntimeException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+    }
+
+    /**
+     * Admin confirma serviço + envia para fila de repasse (quando o cliente não confirma ou o webhook falhou).
+     */
+    public function liberar(int $pagamentoId): mixed
+    {
+        $this->exigeRole('admin');
+        $pag = model(PagamentoModel::class)->find($pagamentoId);
+        if ($pag === null) {
+            return redirect()->back()->with('error', 'Pagamento não encontrado.');
+        }
+
+        try {
+            (new AgendamentoService())->adminLiberarRepasse((int) $pag['agendamento_id']);
+
+            return redirect()->to(base_url('admin/pagamentos'))
+                ->with('success', 'Agendamento #' . $pag['agendamento_id'] . ' liberado: comissão retida e líquido na fila de repasse.');
         } catch (RuntimeException $e) {
             return redirect()->back()->with('error', $e->getMessage());
         }

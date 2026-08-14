@@ -1,0 +1,44 @@
+ERRO: Access denied for user ... (using password: NO)
+=====================================================
+
+Significa: o .env no servidor NÃO tem senha do MySQL
+(ou o arquivo .env não está sendo lido).
+
+CORREÇÃO (2 minutos)
+--------------------
+1) hPanel → File Manager → public_html
+2) Abra o arquivo .env (se não existir, copie .env.example e renomeie)
+3) Preencha EXATAMENTE com os dados do hPanel → Bancos de dados MySQL:
+
+CI_ENVIRONMENT = production
+
+app.baseURL = 'https://whitesmoke-tarsier-299141.hostingersite.com/'
+
+database.default.hostname = localhost
+database.default.database = u240559973_diarista
+database.default.username = SEU_USUARIO_MYSQL_DO_HPANEL
+database.default.password = 'SUA_SENHA_MYSQL_DO_HPANEL'
+database.default.DBDriver = MySQLi
+database.default.port = 3306
+
+4) Salve o arquivo
+5) Se a senha tiver @ # $ etc., mantenha entre aspas simples: 'Senha@123'
+6) Recarregue o site
+
+ONDE VER USUÁRIO E SENHA MYSQL
+------------------------------
+hPanel → Bancos de dados → MySQL
+- Nome do banco
+- Usuário
+- Senha (se esqueceu, redefina no painel)
+
+NÃO confunda com usuário FTP.
+FTP e MySQL são senhas diferentes.
+
+SE AINDA FALHAR
+---------------
+- Confirme que o .env está em public_html/.env (mesmo nível do index.php e da pasta app/)
+- NÃO deixe:
+    database.default.password =
+    database.default.password = COLE_SENHA_MYSQL
+- Após salvar, limpe cache se existir: apague arquivos em writable/cache/ (mantenha index.html)

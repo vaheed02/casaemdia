@@ -47,6 +47,69 @@ $tagPag = static function (string $s): string {
     </div>
   </div>
 
+  <div class="panel" style="margin-bottom:16px;border-color:var(--amber)">
+    <div class="panel-body" style="font-size:13px;line-height:1.55;color:var(--ink-700)">
+      <strong>Como funciona (sem depender de webhook):</strong>
+      <ol style="margin:8px 0 0 18px">
+        <li>Cliente paga → valor <em>autorizado/retido</em> na conta MP da plataforma.</li>
+        <li>Prestador aceita → inicia → conclui.</li>
+        <li>Cliente confirma o serviço <strong>ou</strong> o admin clica em <strong>Liberar repasse</strong>.</li>
+        <li>Só então o pagamento fica <code>capturado</code> e entra na <strong>fila de repasses</strong>.</li>
+        <li>Admin marca <strong>Repassado</strong> após transferir o líquido (PIX) ao prestador.</li>
+      </ol>
+      <p class="hint" style="margin-top:10px">Webhook do MP é opcional. O botão <strong>Sync</strong> consulta a API do Mercado Pago por <code>external_reference</code>.</p>
+    </div>
+  </div>
+
+  <?php if (! empty($aLiberar)): ?>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h3>Aguardando liberação (cliente ou admin)</h3></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Pag.</th>
+            <th>Agend.</th>
+            <th>Cliente</th>
+            <th>Prestador</th>
+            <th>Serviço</th>
+            <th>Pagamento</th>
+            <th>Líquido</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($aLiberar as $p): ?>
+            <tr>
+              <td>#<?= (int) $p['id'] ?></td>
+              <td><a href="<?= base_url('agendamentos/' . $p['agendamento_id']) ?>">#<?= (int) $p['agendamento_id'] ?></a></td>
+              <td><?= esc($p['cliente_nome']) ?></td>
+              <td><?= esc($p['prestador_nome']) ?></td>
+              <td><span class="tag gold"><?= esc($p['agendamento_status']) ?></span></td>
+              <td><span class="tag <?= $tagPag($p['status']) ?>"><?= esc($p['status']) ?></span></td>
+              <td class="money"><?= $fmt($p['valor_liquido_prestador']) ?></td>
+              <td class="btn-row">
+                <form method="post" action="<?= base_url('admin/pagamentos/' . $p['id'] . '/sincronizar') ?>">
+                  <?= csrf_field() ?>
+                  <button class="btn btn-ghost" type="submit" style="height:34px;padding:0 10px;font-size:12px">Sync MP</button>
+                </form>
+                <form method="post" action="<?= base_url('admin/pagamentos/' . $p['id'] . '/liberar') ?>" onsubmit="return confirm('Confirmar serviço e colocar líquido na fila de repasse?');">
+                  <?= csrf_field() ?>
+                  <button class="btn btn-green" type="submit" style="height:34px;padding:0 10px;font-size:12px">Liberar repasse</button>
+                </form>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-body hint">
+      Estes casos já têm pagamento retido e o serviço avançou, mas ainda não entraram na fila de repasse
+      (falta confirmação do cliente). Use <strong>Liberar repasse</strong> para não depender de webhook.
+    </div>
+  </div>
+  <?php endif; ?>
+
   <?php if (! empty($aRepassar)): ?>
   <div class="panel" style="margin-bottom:16px">
     <div class="panel-head"><h3>Fila de repasses</h3></div>
@@ -132,11 +195,17 @@ $tagPag = static function (string $s): string {
                 <?php if (! empty($p['mp_status'])): ?><br><small><?= esc($p['mp_status']) ?></small><?php endif; ?>
               </td>
               <td><span class="tag <?= ($p['payout_status'] ?? '') === 'pago' ? 'green' : (($p['payout_status'] ?? '') === 'pendente' ? 'gold' : 'gray') ?>"><?= esc($p['payout_status'] ?? '—') ?></span></td>
-              <td>
+              <td class="btn-row">
                 <?php if (($p['gateway'] ?? '') === 'mercadopago'): ?>
                   <form method="post" action="<?= base_url('admin/pagamentos/' . $p['id'] . '/sincronizar') ?>">
                     <?= csrf_field() ?>
                     <button class="btn btn-ghost" type="submit" style="height:34px;padding:0 10px;font-size:12px">Sync</button>
+                  </form>
+                <?php endif; ?>
+                <?php if (in_array($p['status'], ['autorizado', 'pendente'], true) || (($p['payout_status'] ?? '') === 'nao_aplicavel' && $p['status'] === 'autorizado')): ?>
+                  <form method="post" action="<?= base_url('admin/pagamentos/' . $p['id'] . '/liberar') ?>" onsubmit="return confirm('Liberar este pagamento para a fila de repasse?');">
+                    <?= csrf_field() ?>
+                    <button class="btn btn-green" type="submit" style="height:34px;padding:0 10px;font-size:12px">Liberar</button>
                   </form>
                 <?php endif; ?>
               </td>

@@ -50,16 +50,34 @@ class WebhookController extends BaseController
         }
 
         try {
-            $gw  = PaymentGatewayFactory::make('mercadopago');
-            // localiza agendamento pelo payment id ou consulta payment
-            $pag = model(PagamentoModel::class)->where('mp_payment_id', (string) $id)->first();
+            $gw     = PaymentGatewayFactory::make('mercadopago');
+            $client = new \App\Libraries\Payments\MercadoPagoClient();
+            $pag    = model(PagamentoModel::class)->where('mp_payment_id', (string) $id)->first();
 
-            if ($pag === null) {
-                // tenta pelo external_reference via API
-                $client = new \App\Libraries\Payments\MercadoPagoClient();
-                $pay    = $client->getPayment((string) $id);
-                $ext    = (string) ($pay['external_reference'] ?? '');
-                $agId   = 0;
+            if ($pag !== null) {
+                $gw->sincronizarPagamento((int) $pag['agendamento_id'], (string) $id);
+            } else {
+                $topicStr = (string) $topic;
+                $paymentId = (string) $id;
+
+                // merchant_order → extrai payment id
+                if (str_contains($topicStr, 'merchant_order') || $topicStr === 'topic_merchant_order_wh') {
+                    $order = $client->getMerchantOrder($paymentId);
+                    $payments = $order['payments'] ?? [];
+                    foreach ($payments as $p) {
+                        if (! empty($p['id']) && ($p['status'] ?? '') === 'approved') {
+                            $paymentId = (string) $p['id'];
+                            break;
+                        }
+                        if (! empty($p['id'])) {
+                            $paymentId = (string) $p['id'];
+                        }
+                    }
+                }
+
+                $pay = $client->getPayment($paymentId);
+                $ext = (string) ($pay['external_reference'] ?? '');
+                $agId = 0;
                 if (preg_match('/agendamento-(\d+)/', $ext, $m)) {
                     $agId = (int) $m[1];
                 } elseif (! empty($pay['metadata']['agendamento_id'])) {
@@ -67,10 +85,8 @@ class WebhookController extends BaseController
                 }
 
                 if ($agId > 0) {
-                    $gw->sincronizarPagamento($agId, (string) $id);
+                    $gw->sincronizarPagamento($agId, $paymentId);
                 }
-            } else {
-                $gw->sincronizarPagamento((int) $pag['agendamento_id'], (string) $id);
             }
         } catch (RuntimeException $e) {
             log_message('error', 'MP Webhook error: ' . $e->getMessage());

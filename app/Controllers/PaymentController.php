@@ -116,18 +116,15 @@ class PaymentController extends BaseController
         $paymentId = $this->request->getGet('payment_id')
             ?? $this->request->getGet('collection_id');
 
-        if ($agId > 0 && $paymentId && $paymentId !== 'null') {
+        if ($agId > 0) {
             try {
-                PaymentGatewayFactory::make()->sincronizarPagamento($agId, (string) $paymentId);
+                // Com ou sem payment_id: busca no MP por external_reference se precisar
+                PaymentGatewayFactory::make()->sincronizarPagamento(
+                    $agId,
+                    ($paymentId && $paymentId !== 'null') ? (string) $paymentId : null
+                );
             } catch (RuntimeException $e) {
                 log_message('error', 'MP retorno sync: ' . $e->getMessage());
-            }
-        } elseif ($agId > 0) {
-            // Tenta ao menos recarregar o registro local
-            try {
-                PaymentGatewayFactory::make()->sincronizarPagamento($agId);
-            } catch (RuntimeException $e) {
-                // ignore
             }
         }
 
