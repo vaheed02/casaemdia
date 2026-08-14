@@ -1,6 +1,6 @@
-# Deploy automático para Hostinger via FTP/FTPS
+# Deploy Hostinger via SFTP (porta 65002) — padrão hPanel
 # Secrets: HOSTINGER_FTP_SERVER, HOSTINGER_FTP_USERNAME, HOSTINGER_FTP_PASSWORD, HOSTINGER_FTP_SERVER_DIR
-# NÃO sobrescreve .env no servidor.
+# NÃO sobrescreve .env
 
 name: Deploy Hostinger
 
@@ -23,49 +23,130 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Montar pasta de deploy (estrutura plana public_html)
+      - name: Montar pasta de deploy (estrutura plana)
         run: |
           set -e
           mkdir -p release
           cp -a app release/app
-          # assets de public/ na raiz (sem index/htaccess de dev)
           rsync -a --exclude 'index.php' --exclude '.htaccess' public/ release/
-          # front controller Hostinger (plano)
           cp deploy/hostinger/index.php release/index.php
           cp deploy/hostinger/public_html.htaccess release/.htaccess
           cp deploy/hostinger/upgrade-db.php release/upgrade-db.php
           cp deploy/hostinger/upgrade.sql release/upgrade.sql
           cp deploy/hostinger/check-setup.php release/check-setup.php 2>/dev/null || true
           cp composer.json composer.lock spark preload.php release/ 2>/dev/null || true
-          # writable skeleton (não apaga logs remotos se exclude)
           mkdir -p release/writable/{cache,logs,session,uploads,debugbar}
           for d in cache logs session uploads debugbar; do
-            echo '<!DOCTYPE html><title>403</title>' > "release/writable/$d/index.html"
+            printf '%s\n' '<!DOCTYPE html><title>403</title>' > "release/writable/$d/index.html"
           done
-          echo '<!DOCTYPE html><title>403</title>' > release/writable/index.html
-          find release -type f | wc -l
-          ls -la release | head -30
+          printf '%s\n' '<!DOCTYPE html><title>403</title>' > release/writable/index.html
+          echo "Arquivos no release: $(find release -type f | wc -l)"
 
-      - name: Deploy FTP/FTPS (preserva .env e vendor)
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          server-dir: ${{ secrets.HOSTINGER_FTP_SERVER_DIR }}
-          local-dir: ./release/
-          protocol: ftps
-          dangerous-clean-slate: false
-          timeout: 600000
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/.env
-            **/.env.*
-            **/vendor/**
-            **/writable/cache/**
-            **/writable/logs/**
-            **/writable/session/**
-            **/writable/debugbar/**
-            **/tests/**
-            **/deploy/pacotes/**
+      - name: Instalar cliente SFTP
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp openssh-client sshpass
+
+      - name: Deploy SFTP (Hostinger porta 65002)
+        env:
+          FTP_SERVER: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          FTP_USER: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          FTP_PASS: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.HOSTINGER_FTP_SERVER_DIR }}
+        run: |
+          set -e
+          SERVER="${FTP_SERVER}"
+          USER="${FTP_USER}"
+          PASS="${FTP_PASS}"
+          DIR="${FTP_DIR:-/public_html/}"
+          # normaliza dir
+          DIR="/${DIR#/}"
+          DIR="${DIR%/}/"
+
+          echo "Servidor: $SERVER"
+          echo "Dir remoto: $DIR"
+          echo "Usuario: $USER"
+
+          # Testa portas comuns Hostinger
+          for PORT in 65002 22 21; do
+            echo "Probe TCP $SERVER:$PORT"
+            timeout 8 bash -c "echo >/dev/tcp/$SERVER/$PORT" 2>/dev/null && echo "OPEN $PORT" || echo "CLOSED $PORT"
+          done
+
+          # Preferência: SFTP 65002 (Hostinger)
+          export LFTP_PASSWORD="$PASS"
+          set +e
+          lftp -c "
+            set cmd:fail-exit yes;
+            set net:timeout 30;
+            set net:max-retries 2;
+            set sftp:auto-confirm yes;
+            set ssl:verify-certificate no;
+            open -u ${USER}, sftp://${SERVER}:65002;
+            pwd;
+            ls;
+            mirror -R --verbose=1 --parallel=3 \
+              --exclude-glob .env \
+              --exclude-glob .env.* \
+              --exclude-glob vendor/** \
+              --exclude-glob writable/cache/** \
+              --exclude-glob writable/logs/** \
+              --exclude-glob writable/session/** \
+              --exclude-glob writable/debugbar/** \
+              ./release/ ${DIR};
+            bye
+          "
+          RC=$?
+          set -e
+          if [ $RC -eq 0 ]; then
+            echo "SFTP 65002 OK"
+            exit 0
+          fi
+          echo "SFTP 65002 falhou (rc=$RC). Tentando SFTP 22..."
+
+          set +e
+          lftp -c "
+            set cmd:fail-exit yes;
+            set net:timeout 30;
+            set sftp:auto-confirm yes;
+            open -u ${USER}, sftp://${SERVER}:22;
+            mirror -R --verbose=1 --parallel=2 \
+              --exclude-glob .env \
+              --exclude-glob .env.* \
+              --exclude-glob vendor/** \
+              ./release/ ${DIR};
+            bye
+          "
+          RC=$?
+          set -e
+          if [ $RC -eq 0 ]; then
+            echo "SFTP 22 OK"
+            exit 0
+          fi
+
+          echo "SFTP falhou. Tentando FTPS porta 21..."
+          set +e
+          lftp -c "
+            set cmd:fail-exit yes;
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ssl:verify-certificate no;
+            set net:timeout 30;
+            open -u ${USER},${PASS} ftps://${SERVER}:21;
+            mirror -R --verbose=1 \
+              --exclude-glob .env \
+              --exclude-glob vendor/** \
+              ./release/ ${DIR};
+            bye
+          "
+          RC=$?
+          set -e
+          if [ $RC -eq 0 ]; then
+            echo "FTPS OK"
+            exit 0
+          fi
+
+          echo "FALHA: não foi possível conectar via SFTP/FTPS."
+          echo "No hPanel Hostinger → Arquivos → Contas FTP, confirme:"
+          echo "  - Host FTP (pode ser um IP, não o domínio CDN)"
+          echo "  - Porta SFTP 65002 ativa"
+          echo "  - Conta FTP criada/habilitada"
+          exit 1
