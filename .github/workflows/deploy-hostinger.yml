@@ -1,0 +1,63 @@
+# Deploy automático para Hostinger via FTP
+# Configure no GitHub → Settings → Secrets and variables → Actions:
+#   HOSTINGER_FTP_SERVER   (ex: ftp.seudominio.com ou IP)
+#   HOSTINGER_FTP_USERNAME
+#   HOSTINGER_FTP_PASSWORD
+#   HOSTINGER_FTP_SERVER_DIR  (ex: /public_html/)  — opcional, default /public_html/
+#
+# NÃO sobrescreve .env no servidor (exclude).
+
+name: Deploy Hostinger
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'public/**'
+      - 'deploy/hostinger/**'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/deploy-hostinger.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.HOSTINGER_FTP_SERVER != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Montar pasta de deploy (estrutura plana public_html)
+        run: |
+          mkdir -p release
+          cp -a app release/app
+          # public assets na raiz
+          cp -a public/. release/
+          rm -f release/index.php release/.htaccess
+          # front controller Hostinger
+          cp deploy/hostinger/index.php release/index.php
+          cp deploy/hostinger/public_html.htaccess release/.htaccess
+          cp deploy/hostinger/upgrade-db.php release/upgrade-db.php
+          cp deploy/hostinger/upgrade.sql release/upgrade.sql
+          cp composer.json composer.lock spark preload.php release/ 2>/dev/null || true
+          # NÃO copiar .env
+
+      - name: Deploy FTP (sem apagar .env)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          server-dir: ${{ secrets.HOSTINGER_FTP_SERVER_DIR || '/public_html/' }}
+          local-dir: ./release/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.env
+            **/writable/cache/**
+            **/writable/logs/**
+            **/writable/session/**
+            **/vendor/**
