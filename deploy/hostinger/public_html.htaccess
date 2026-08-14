@@ -1,0 +1,32 @@
+# CodeIgniter 4 — raiz do public_html (estrutura plana Hostinger)
+Options -Indexes +FollowSymLinks
+
+<IfModule mod_rewrite.c>
+	Options +FollowSymlinks
+	RewriteEngine On
+	RewriteBase /
+
+	# Bloquear pastas/arquivos sensíveis
+	RewriteRule ^(app|writable|tests|vendor|deploy)/ - [F,L]
+	RewriteRule ^(\.env|composer\.(json|lock)|spark|preload\.php|phpunit\.xml\.dist|builds) - [F,L]
+
+	# Remover barra final
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteCond %{REQUEST_URI} (.+)/$
+	RewriteRule ^ %1 [L,R=301]
+
+	# Front controller
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule ^(.*)$ index.php/$1 [L,QSA]
+
+	# Authorization (API/JWT)
+	RewriteCond %{HTTP:Authorization} .
+	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+	ErrorDocument 404 index.php
+</IfModule>
+
+ServerSignature Off

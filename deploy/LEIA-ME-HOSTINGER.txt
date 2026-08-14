@@ -1,0 +1,70 @@
+Casa em Dia — Deploy Hostinger (public_html)
+============================================
+
+Dois tipos de pacote em deploy/pacotes/:
+
+A) servicos_app-UPDATE-HOSTINGER-....zip  ← USE ESTE se o site JÁ está no ar
+   - Atualiza código sem apagar .env nem banco
+   - Veja LEIA-ME-ATUALIZACAO.txt dentro do zip
+
+B) servicos_app-PUBLIC_HTML-....zip  ← instalação NOVA / full
+   - Estrutura plana com vendor + schema.sql
+   - Cuidado: schema.sql recria tabelas (apaga dados se importar de novo)
+
+============================================================
+ATUALIZAÇÃO (site já publicado) — recomendado
+============================================================
+
+1) hPanel → File Manager → public_html
+2) Backup da pasta app/ (baixar ou renomear app → app_bak)
+3) Upload do ZIP UPDATE e EXTRAIR na raiz de public_html (sobrescrever)
+4) NÃO apague o .env existente
+5) Confira no .env:
+     mercadopago.driver = mercadopago
+     mercadopago.accessToken = (token produção APP_USR-...)
+     mercadopago.publicKey = (public key)
+     mercadopago.sandbox = false
+6) Abra uma vez: https://SEU-DOMINIO/upgrade-db.php
+7) APAGUE upgrade-db.php e upgrade.sql do servidor
+8) No painel Mercado Pago, webhook:
+     https://SEU-DOMINIO/webhooks/mercadopago
+9) Teste: login cliente → agendar → Pagar
+
+============================================================
+INSTALAÇÃO NOVA (PUBLIC_HTML completo)
+============================================================
+
+ANTES
+-----
+1) hPanel: domínio, banco MySQL (nome/user/senha), PHP 8.2+
+2) Domínio atual de exemplo:
+   https://whitesmoke-tarsier-299141.hostingersite.com/
+   Banco: u240559973_diarista
+
+PASSOS
+------
+1) File Manager → public_html (backup do conteúdo antigo)
+2) Upload do ZIP PUBLIC_HTML e EXTRAIA na RAIZ
+3) Estrutura esperada:
+     public_html/index.php
+     public_html/.htaccess
+     public_html/.env
+     public_html/app/
+     public_html/vendor/
+     public_html/writable/
+4) Edite .env: usuario/senha MySQL + tokens Mercado Pago
+5) phpMyAdmin → Importar schema.sql (só em banco vazio)
+6) writable: permissão 755/775
+7) Teste a home e /login
+
+MERCADO PAGO
+------------
+  mercadopago.driver = mercadopago
+  mercadopago.sandbox = false   (produção)
+  Webhook: https://SEU-DOMINIO/webhooks/mercadopago
+
+Fluxo: agenda → paga (retém) → prestador executa → cliente confirma
+       → comissão app + repasse admin ao prestador
+
+NÃO use /index.php nem /public/ na URL.
+"@

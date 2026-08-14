@@ -1,0 +1,17 @@
+# Hostinger / public_html — encaminha tudo para a pasta public/ do CodeIgniter 4
+Options -Indexes +FollowSymLinks
+
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	RewriteBase /
+
+	# Não reescrever se já estiver em public/
+	RewriteRule ^public/ - [L]
+
+	# Bloquear acesso HTTP direto a pastas sensíveis
+	RewriteRule ^(app|writable|tests|vendor|deploy)/ - [F,L]
+	RewriteRule ^(\.env|composer\.(json|lock)|spark|preload\.php|phpunit\.xml\.dist|builds) - [F,L]
+
+	# Todo o resto vai para public/
+	RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

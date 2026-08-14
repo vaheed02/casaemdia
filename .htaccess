@@ -1,0 +1,11 @@
+# Fallback se o Alias do Apache não estiver ativo:
+# encaminha tudo para a pasta public/
+Options -Indexes +FollowSymLinks
+
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	RewriteBase /servicos_app/
+
+	RewriteRule ^public/ - [L]
+	RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
