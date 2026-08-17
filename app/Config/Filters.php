@@ -37,6 +37,7 @@ class Filters extends BaseFilters
         
         // 🛠️ ALIAS DO FILTRO DE AUTENTICAÇÃO ADICIONADO AQUI:
         'auth'          => \App\Filters\AuthFilter::class,
+        'apiAuth'       => \App\Filters\ApiAuthFilter::class,
     ];
 
     /**
